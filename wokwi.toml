@@ -1,0 +1,5 @@
+[wokwi]
+version = 1
+firmware = 'build/wd_dht_example.uf2' 
+elf = 'build/wd_dht_example.elf'
+rfc2217ServerPort = 4000

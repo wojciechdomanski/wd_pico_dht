@@ -1,0 +1,90 @@
+.program dht_read_data
+
+; DHT uses 1-wire protocol.
+; In case of DHT22:
+; Start signal	    The microprocessor sets the SDA to LOW for a period of time (at least 800μs) to inform the sensor to prepare the data.
+; Response signal	The sensor sets the SDA to LOW for 80μs, and then HIGH for 80μs, to respond to the start signal.
+; Data format	    After receiving the start signal, the sensor reads out a string of data (40 bits) through SDA, High bit first out.
+; Humidity	        The humidity resolution is 16 Bits, high bit first out; The value read out by the sensor is 10 times higher than the actual humidity.
+; Temperature	    The temperature resolution is 16 Bits, high bit first out; The value read out by the sensor is 10 times higher than the actual temperature.
+;                   When the MSB(Bit15) is "1", it indicates a negative temperature; When the MSB (Bit15) is "0", it indicates a positive temperature;
+;                   The other bits (Bit14 ~ bit 0) indicate the detected temperature value.
+; Parity bit	    Parity bit = humidity high + humidity low + temperature high + temperature low
+
+start_wait_for_low:
+    jmp y-- start_wait_for_low
+    set pindirs 0
+
+sensor_init_wait_for_low:
+    jmp pin sensor_init_wait_for_low
+
+sensor_init_wait_for_high:
+    jmp pin sensor_wait_for_low
+    jmp sensor_init_wait_for_high
+
+sensor_wait_for_low:
+    jmp pin sensor_wait_for_low
+
+sensor_wait_for_high:
+    jmp pin sensor_data_init
+    jmp sensor_wait_for_high
+
+sensor_data_init:
+    mov y, osr
+
+sensor_data_loop:
+    jmp pin sensor_tick
+    jmp sensor_short_cycle
+
+sensor_tick:
+    jmp y-- sensor_data_loop
+    set x, 1
+    in x, 1
+    jmp sensor_wait_for_low
+
+sensor_short_cycle:
+    in null, 1
+    jmp sensor_wait_for_high
+
+% c-sdk {
+#include "hardware/clocks.h"
+static inline void read_data_program_init(PIO pio, uint sm, uint offset, uint pin, float freq, TimingStructTypeDef timings)
+{
+    pio_sm_config c = dht_read_data_program_get_default_config(offset);
+    
+    // Set pin as an output
+    sm_config_set_set_pins(&c, pin, 1);
+
+    // Configure passed pin to be used for pio conditional jumps
+    sm_config_set_jmp_pin(&c, pin);
+
+    // Set state machine's clock rate
+    float div = clock_get_hz(clk_sys) / freq; // clock divider
+    sm_config_set_clkdiv(&c, div);
+
+    // Perform autopush every 8 bits
+    sm_config_set_in_shift(&c, false, true, 8); // shift right, autopush, push_threshold
+
+    // Load configuration and jump to the start of the program
+    pio_sm_init(pio, sm, offset, &c);
+
+    // Add timing values to the FIFO TX buffer
+    pio_sm_put_blocking(pio, sm, timings.start_time);
+    pio_sm_put_blocking(pio, sm, timings.long_cycle_time);
+
+    // Set data pin to output
+    pio_sm_exec(pio, sm, pio_encode_set(pio_pindirs, 1));
+
+    // Pull the start time value from the TX FIFO buffer
+    pio_sm_exec(pio, sm, pio_encode_pull(false, true)); // if_empty, block
+
+    // Move start time value from Output Shift Register to Y register
+    pio_sm_exec(pio, sm, pio_encode_mov(pio_y, pio_osr));
+
+    // Pull the long cycle time value from the TX FIFO buffer
+    pio_sm_exec(pio, sm, pio_encode_pull(false, true)); // if_empty, block
+
+    // Set the state machine running
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}
