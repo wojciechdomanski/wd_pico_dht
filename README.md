@@ -32,7 +32,7 @@ The Wokwi VCS extension enables real-time changes to the sensor’s reading.
 
 ## Thanks
 
-I've learned a lot from Life with **David's videos**[^4] and **Valentin Milea's GitHub**[^5]
+I've learned a lot from **Life with David's videos**[^4] and **Valentin Milea's GitHub**[^5]
 
 ## References
 [^1]: **Wokwi** https://docs.wokwi.com/?utm_source=wokwi
